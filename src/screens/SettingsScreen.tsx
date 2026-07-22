@@ -9,7 +9,12 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
+import { useCoaching } from '../context/CoachingContext';
+import { STORAGE_KEYS, DEFAULT_COACHING_SETTINGS } from '../types';
+import { isAIConfigured, getAIModel } from '../lib/ai';
 import {
   initNotifications,
   scheduleAllHabitReminders,
@@ -29,8 +34,21 @@ const TIME_OPTIONS = [
   '17:00', '18:00', '19:00', '20:00', '21:00',
 ];
 
+const COACHING_TIME_OPTIONS = [
+  '09:00', '10:00', '11:00',
+  '12:00', '13:00', '14:00', '15:00', '16:00',
+  '17:00', '18:00', '19:00', '20:00', '21:00',
+];
+
 export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   const { state, dispatch, getTodayCompletions } = useApp();
+  const { user, signOut, isAuthenticated } = useAuth();
+  const {
+    state: coachingState,
+    generateReflection,
+    isAIConfigured: aiAvailable,
+    updateCoachingSettings,
+  } = useCoaching();
 
   const [notifGranted, setNotifGranted] = useState(false);
   const [justConfirmed, setJustConfirmed] = useState<string | null>(null);
@@ -101,6 +119,35 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Account */}
+        <Text style={styles.sectionTitle}>Account</Text>
+        <View style={styles.accountCard}>
+          <View style={styles.accountRow}>
+            <Text style={styles.accountLabel}>Signed in as</Text>
+            <Text style={styles.accountEmail}>{user?.email ?? '—'}</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.signOutBtn}
+            onPress={() => {
+              triggerHaptic('medium');
+              Alert.alert(
+                'Sign Out',
+                'Your data is safely stored in the cloud. You can sign back in anytime.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Sign Out',
+                    style: 'destructive',
+                    onPress: signOut,
+                  },
+                ]
+              );
+            }}
+          >
+            <Text style={styles.signOutBtnText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Notifications */}
         <Text style={styles.sectionTitle}>Notifications</Text>
         <View style={styles.notifCard}>
@@ -212,6 +259,158 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
           </View>
         </View>
 
+        {/* AI Coaching */}
+        <Text style={styles.sectionTitle}>🧠 AI Coaching</Text>
+        <View style={styles.settingCard}>
+          <View style={styles.settingRow}>
+            <View>
+              <Text style={styles.settingLabel}>Smart Coaching</Text>
+              <Text style={styles.settingDesc}>
+                AI-powered nudges and motivational messages
+              </Text>
+            </View>
+            <Switch
+              value={coachingState.settings.coachingEnabled}
+              onValueChange={(val) => {
+                triggerHaptic('light');
+                updateCoachingSettings({ coachingEnabled: val });
+              }}
+              trackColor={{ false: '#e0e0e0', true: '#c4b5fd' }}
+              thumbColor={coachingState.settings.coachingEnabled ? '#6c63ff' : '#999'}
+            />
+          </View>
+
+          {coachingState.settings.coachingEnabled && (
+            <>
+              <View style={styles.settingRow}>
+                <View>
+                  <Text style={styles.settingLabel}>📊 Weekly Reports</Text>
+                  <Text style={styles.settingDesc}>
+                    AI-generated weekly habit analysis
+                  </Text>
+                </View>
+                <Switch
+                  value={coachingState.settings.reflectionWeekly}
+                  onValueChange={(val) => {
+                    triggerHaptic('light');
+                    updateCoachingSettings({ reflectionWeekly: val });
+                  }}
+                  trackColor={{ false: '#e0e0e0', true: '#c4b5fd' }}
+                  thumbColor={coachingState.settings.reflectionWeekly ? '#6c63ff' : '#999'}
+                />
+              </View>
+
+              <View style={styles.settingRow}>
+                <View>
+                  <Text style={styles.settingLabel}>📈 Monthly Reports</Text>
+                  <Text style={styles.settingDesc}>
+                    AI-powered monthly performance deep-dive
+                  </Text>
+                </View>
+                <Switch
+                  value={coachingState.settings.reflectionMonthly}
+                  onValueChange={(val) => {
+                    triggerHaptic('light');
+                    updateCoachingSettings({ reflectionMonthly: val });
+                  }}
+                  trackColor={{ false: '#e0e0e0', true: '#c4b5fd' }}
+                  thumbColor={coachingState.settings.reflectionMonthly ? '#6c63ff' : '#999'}
+                />
+              </View>
+
+              {/* Coaching Push Notifications */}
+              <View style={[styles.settingRow, { borderTopWidth: 1, borderTopColor: '#f0f0f0', marginTop: 4, paddingTop: 12 }]}>
+                <View>
+                  <Text style={styles.settingLabel}>🚀 Push Coaching</Text>
+                  <Text style={styles.settingDesc}>
+                    Get a push notification at your chosen time with a personalized coaching message
+                  </Text>
+                </View>
+                <Switch
+                  value={coachingState.settings.coachingNotificationEnabled}
+                  onValueChange={(val) => {
+                    triggerHaptic('light');
+                    updateCoachingSettings({ coachingNotificationEnabled: val });
+                  }}
+                  trackColor={{ false: '#e0e0e0', true: '#c4b5fd' }}
+                  thumbColor={coachingState.settings.coachingNotificationEnabled ? '#6c63ff' : '#999'}
+                />
+              </View>
+
+              {coachingState.settings.coachingNotificationEnabled && (
+                <View style={styles.timeSection}>
+                  <Text style={styles.subLabel}>Coaching Notification Time</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.timePicker}
+                  >
+                    {COACHING_TIME_OPTIONS.map((time) => {
+                      const [h, m] = time.split(':');
+                      const isAM = parseInt(h) < 12;
+                      const display = `${h}:${m} ${isAM ? 'AM' : 'PM'}`;
+                      const isSelected = coachingState.settings.coachingNotificationTime === time;
+                      return (
+                        <TouchableOpacity
+                          key={time}
+                          style={[
+                            styles.timeChip,
+                            isSelected && styles.timeChipActive,
+                          ]}
+                          onPress={() => {
+                            triggerHaptic('light');
+                            updateCoachingSettings({ coachingNotificationTime: time });
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.timeChipText,
+                              isSelected && styles.timeChipTextActive,
+                            ]}
+                          >
+                            {display}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
+
+              <View style={styles.aiInfoRow}>
+                <Text style={styles.aiInfoLabel}>
+                  {aiAvailable ? '✅ AI configured' : '⚠️ AI not configured'}
+                </Text>
+                <Text style={styles.aiInfoModel}>
+                  {aiAvailable ? `Model: ${getAIModel()}` : 'Set EXPO_PUBLIC_AI_API_KEY'}
+                </Text>
+              </View>
+
+              {/* Generate on-demand */}
+              <View style={styles.generateRow}>
+                <TouchableOpacity
+                  style={styles.generateBtn}
+                  onPress={() => {
+                    triggerHaptic('light');
+                    generateReflection('weekly');
+                  }}
+                >
+                  <Text style={styles.generateBtnText}>📅 Generate Weekly</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.generateBtn}
+                  onPress={() => {
+                    triggerHaptic('light');
+                    generateReflection('monthly');
+                  }}
+                >
+                  <Text style={styles.generateBtnText}>📆 Generate Monthly</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+
         {/* App Info */}
         <Text style={styles.sectionTitle}>App Info</Text>
         <View style={styles.settingCard}>
@@ -314,10 +513,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
     elevation: 2,
   },
   notifCard: {
@@ -325,10 +521,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
     elevation: 2,
     overflow: 'hidden',
   },
@@ -337,6 +530,43 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     paddingVertical: 8,
+  },
+  accountCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+    elevation: 2,
+  },
+  accountRow: {
+    marginBottom: 12,
+  },
+  accountLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  accountEmail: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1a1a2e',
+  },
+  signOutBtn: {
+    backgroundColor: '#fef2f2',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  signOutBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ef4444',
   },
   settingRowText: {
     flex: 1,
@@ -444,10 +674,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
     elevation: 2,
   },
   actionCardEmoji: {
@@ -503,5 +730,44 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: '#999',
     marginLeft: 8,
+  },
+  aiInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    marginTop: 4,
+  },
+  aiInfoLabel: {
+    fontSize: 12,
+    color: '#888',
+    fontWeight: '500',
+  },
+  aiInfoModel: {
+    fontSize: 12,
+    color: '#aaa',
+  },
+  generateRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 12,
+  },
+  generateBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#f8f7ff',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#d4d0ff',
+  },
+  generateBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6c63ff',
   },
 });

@@ -223,10 +223,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 18,
     alignItems: 'center',
-    shadowColor: '#6c63ff',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
+    boxShadow: '0 4px 8px rgba(108, 99, 255, 0.35)',
     elevation: 6,
   },
   startText: {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useReducer, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useReducer, useCallback, useRef } from 'react';
 import {
   Habit,
   Challenge,
@@ -15,6 +15,14 @@ import {
   loadSettings,
   saveSettings,
 } from '../storage';
+import { useAuth } from './AuthContext';
+import {
+  fullSync,
+  syncHabitsToSupabase,
+  syncChallengesToSupabase,
+  syncSettingsToSupabase,
+  deleteAllUserData,
+} from '../lib/sync';
 
 // ── State ────────────────────────────────────────────────
 interface AppState {
@@ -22,6 +30,7 @@ interface AppState {
   challenges: Challenge[];
   settings: AppSettings;
   loaded: boolean;
+  isSyncing: boolean;
 }
 
 const initialState: AppState = {
@@ -29,6 +38,7 @@ const initialState: AppState = {
   challenges: [],
   settings: DEFAULT_SETTINGS,
   loaded: false,
+  isSyncing: false,
 };
 
 // ── Actions ──────────────────────────────────────────────
@@ -45,7 +55,8 @@ type Action =
   | { type: 'COMPLETE_CHALLENGE'; id: string }
   | { type: 'CLAIM_REWARD'; id: string }
   | { type: 'UPDATE_SETTINGS'; settings: Partial<AppSettings> }
-  | { type: 'CLEAR_ALL' };
+  | { type: 'CLEAR_ALL' }
+  | { type: 'SET_SYNCING'; syncing: boolean };
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
@@ -136,7 +147,11 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, settings: { ...state.settings, ...action.settings } };
 
     case 'CLEAR_ALL':
+      // Note: Supabase deletion is handled in the effect below
       return { ...initialState, loaded: true };
+
+    case 'SET_SYNCING':
+      return { ...state, isSyncing: action.syncing };
 
     default:
       return state;
@@ -147,6 +162,7 @@ function reducer(state: AppState, action: Action): AppState {
 interface AppContextType {
   state: AppState;
   dispatch: React.Dispatch<Action>;
+  triggerSync: () => void;   // Manual sync trigger
   // Derived helpers
   getHabitStats: (habitId: string) => HabitStats;
   getStreak: (habitId: string) => StreakInfo;
@@ -214,7 +230,22 @@ function calcStreak(completions: Record<string, number>): StreakInfo {
 
 // ── Provider ─────────────────────────────────────────────
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, baseDispatch] = useReducer(reducer, initialState);
+  const { user } = useAuth();
+  const userId = user?.id ?? '';
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const needsSyncRef = useRef(false);
+
+  // Wrapped dispatch to detect CLEAR_ALL and trigger remote deletion
+  const dispatch = useCallback(
+    (action: Action) => {
+      if (action.type === 'CLEAR_ALL' && userId) {
+        deleteAllUserData(userId);
+      }
+      baseDispatch(action);
+    },
+    [userId]
+  );
 
   // Load data on mount
   useEffect(() => {
@@ -224,6 +255,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     );
   }, []);
+
+  // Full sync from Supabase after local data loads (only when authenticated)
+  useEffect(() => {
+    if (state.loaded && userId) {
+      fullSync(userId).then((result) => {
+        if (result) {
+          dispatch({
+            type: 'LOAD_DATA',
+            habits: result.habits,
+            challenges: result.challenges,
+            settings: result.settings,
+          });
+        }
+        dispatch({ type: 'SET_SYNCING', syncing: false } as any);
+      });
+    }
+  }, [state.loaded, userId]);
 
   // Persist on change (debounced)
   useEffect(() => {
@@ -235,6 +283,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }, 300);
     return () => clearTimeout(timeout);
   }, [state.habits, state.challenges, state.settings, state.loaded]);
+
+  // Sync to Supabase on mutations (debounced)
+  useEffect(() => {
+    if (!state.loaded || !userId) return;
+    // Mark that a sync is needed
+    needsSyncRef.current = true;
+
+    // Debounce sync: wait for user to stop mutating
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => {
+      if (!needsSyncRef.current) return;
+      needsSyncRef.current = false;
+
+      dispatch({ type: 'SET_SYNCING', syncing: true } as any);
+
+      Promise.all([
+        syncHabitsToSupabase(state.habits, userId),
+        syncChallengesToSupabase(state.challenges, userId),
+        syncSettingsToSupabase(state.settings, userId),
+      ]).finally(() => {
+        dispatch({ type: 'SET_SYNCING', syncing: false } as any);
+      });
+    }, 2000); // 2s debounce — mutations often come in bursts
+
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, [state.habits, state.challenges, state.settings, state.loaded, userId]);
+
+  // Manual sync trigger
+  const triggerSync = useCallback(() => {
+    if (!userId) return;
+    dispatch({ type: 'SET_SYNCING', syncing: true } as any);
+    Promise.all([
+      syncHabitsToSupabase(state.habits, userId),
+      syncChallengesToSupabase(state.challenges, userId),
+      syncSettingsToSupabase(state.settings, userId),
+    ]).finally(() => {
+      dispatch({ type: 'SET_SYNCING', syncing: false } as any);
+    });
+  }, [state.habits, state.challenges, state.settings, userId]);
 
   const getHabitStats = useCallback(
     (habitId: string): HabitStats => {
@@ -362,6 +451,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       value={{
         state,
         dispatch,
+        triggerSync,
         getHabitStats,
         getStreak,
         getTodayCompletions,

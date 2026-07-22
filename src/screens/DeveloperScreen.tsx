@@ -11,7 +11,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
+import { useCoaching } from '../context/CoachingContext';
 import { triggerHaptic } from '../utils/haptics';
+import { SCENARIOS } from '../lib/seed-data';
+import { showNotificationToast } from '../components/NotificationToast';
 
 interface DeveloperScreenProps {
   navigation: any;
@@ -19,6 +22,7 @@ interface DeveloperScreenProps {
 
 export default function DeveloperScreen({ navigation }: DeveloperScreenProps) {
   const { state, dispatch, getActiveChallenges, getTodayCompletions } = useApp();
+  const { coachingDispatch } = useCoaching();
   const [customDate, setCustomDate] = useState(
     new Date().toISOString().split('T')[0]
   );
@@ -129,6 +133,53 @@ export default function DeveloperScreen({ navigation }: DeveloperScreenProps) {
           onPress: () => {
             dispatch({ type: 'CLEAR_ALL' });
             Alert.alert('Done', 'All data cleared.');
+          },
+        },
+      ]
+    );
+  };
+
+  // Seed test data for a scenario
+  const seedScenario = (index: number) => {
+    const scenario = SCENARIOS[index];
+    Alert.alert(
+      `${scenario.emoji} Seed: ${scenario.name}`,
+      `This will clear all current data and load: ${scenario.habits.length} habits, ${scenario.challenges.length} challenge, ${scenario.nudges.length} nudges, ${scenario.reflections.length} reflections.\n\nContinue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Seed Data',
+          onPress: () => {
+            dispatch({ type: 'CLEAR_ALL' });
+
+            // Use requestAnimationFrame to let the clear settle
+            requestAnimationFrame(() => {
+              // Add habits
+              scenario.habits.forEach((h) => {
+                dispatch({ type: 'ADD_HABIT', habit: h });
+              });
+
+              // Add challenges
+              scenario.challenges.forEach((c) => {
+                dispatch({ type: 'ADD_CHALLENGE', challenge: c });
+              });
+
+              // Add coaching nudges via the coaching dispatch
+              scenario.nudges.forEach((n) => {
+                coachingDispatch({ type: 'ADD_NUDGE', nudge: n });
+              });
+
+              // Add reflections via the coaching dispatch
+              scenario.reflections.forEach((r) => {
+                coachingDispatch({ type: 'ADD_REFLECTION', reflection: r });
+              });
+
+              triggerHaptic('success');
+              Alert.alert(
+                'Done',
+                `${scenario.emoji} "${scenario.name}" seeded! Refresh the home screen to see the data.`
+              );
+            });
           },
         },
       ]
@@ -290,6 +341,91 @@ export default function DeveloperScreen({ navigation }: DeveloperScreenProps) {
           </Text>
         </View>
 
+        {/* Simulate Push Notification */}
+        <Text style={styles.sectionTitle}>Test Notification</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardDesc}>
+            Trigger a simulated push notification banner to see how nudges and reminders look in the app.
+          </Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <TouchableOpacity
+              style={styles.seedTestBtn}
+              onPress={() => {
+                showNotificationToast({
+                  id: 'test-coaching',
+                  title: 'Coaching Nudge',
+                  body: 'You are on a 7 day streak for Morning Meditation! Keep it going.',
+                });
+                triggerHaptic('light');
+              }}
+            >
+              <Text style={styles.seedTestBtnText}>💪 Coaching</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.seedTestBtn}
+              onPress={() => {
+                showNotificationToast({
+                  id: 'test-suggestion',
+                  title: 'Habit Tip',
+                  body: 'Try keeping your water bottle on your desk. Visual cues boost consistency by 40%.',
+                });
+                triggerHaptic('light');
+              }}
+            >
+              <Text style={styles.seedTestBtnText}>💡 Suggestion</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.seedTestBtn}
+              onPress={() => {
+                showNotificationToast({
+                  id: 'test-insight',
+                  title: 'Habit Insight',
+                  body: 'Your consistency drops on weekends. Try pairing one habit with your morning coffee.',
+                });
+                triggerHaptic('light');
+              }}
+            >
+              <Text style={styles.seedTestBtnText}>🔍 Insight</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.seedTestBtn}
+              onPress={() => {
+                showNotificationToast({
+                  id: 'test-reflection',
+                  title: 'Weekly Report Ready',
+                  body: 'Your weekly reflection report is ready. Overall consistency: 76%. View it in History.',
+                });
+                triggerHaptic('light');
+              }}
+            >
+              <Text style={styles.seedTestBtnText}>📊 Reflection</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Seed Test Data */}
+        <Text style={styles.sectionTitle}>Seed Test Data</Text>
+        <Text style={[styles.cardDesc, { paddingHorizontal: 0, marginTop: -4 }]}>
+          Quickly load simulated habits with history. Clears existing data first.
+        </Text>
+        {SCENARIOS.map((s, i) => (
+          <TouchableOpacity
+            key={i}
+            style={styles.seedCard}
+            onPress={() => seedScenario(i)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.seedCardLeft}>
+              <Text style={styles.seedCardEmoji}>{s.emoji}</Text>
+              <View style={styles.seedCardText}>
+                <Text style={styles.seedCardName}>{s.name}</Text>
+                <Text style={styles.seedCardDesc}>{s.description}</Text>
+              </View>
+            </View>
+            <Text style={styles.seedCardArrow}>→</Text>
+          </TouchableOpacity>
+        ))}
+
         {/* Reset & Debug */}
         <Text style={styles.sectionTitle}>Danger Zone</Text>
         <TouchableOpacity style={styles.dangerBtn} onPress={resetOnboarding}>
@@ -331,10 +467,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
     elevation: 2,
   },
   cardDesc: {
@@ -395,6 +528,36 @@ const styles = StyleSheet.create({
   bigBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   inspectRow: { fontSize: 13, color: '#555', marginBottom: 4, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   inspectLabel: { fontWeight: '700', color: '#1a1a2e' },
+  seedCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+  },
+  seedCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  seedCardEmoji: { fontSize: 28, marginRight: 12 },
+  seedCardText: { flex: 1 },
+  seedCardName: { fontSize: 15, fontWeight: '700', color: '#1a1a2e', marginBottom: 2 },
+  seedCardDesc: { fontSize: 12, color: '#777', lineHeight: 16 },
+  seedCardArrow: { fontSize: 18, color: '#ccc', marginLeft: 8 },
+  seedTestBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#f0edff',
+    borderWidth: 1.5,
+    borderColor: '#d4d0ff',
+  },
+  seedTestBtnText: { fontSize: 13, fontWeight: '600', color: '#6c63ff' },
   dangerBtn: {
     backgroundColor: '#fff',
     borderRadius: 12,

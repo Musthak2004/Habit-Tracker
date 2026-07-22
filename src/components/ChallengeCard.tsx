@@ -65,10 +65,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1.5,
     borderColor: '#e8e0ff',
-    shadowColor: '#6c63ff',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
+    boxShadow: '0 2px 6px rgba(108, 99, 255, 0.1)',
     elevation: 3,
   },
   cardComplete: {

@@ -3,7 +3,11 @@ import {
   Habit,
   Challenge,
   AppSettings,
+  CoachingNudge,
+  ReflectionReport,
+  CoachingSettings,
   DEFAULT_SETTINGS,
+  DEFAULT_COACHING_SETTINGS,
   STORAGE_KEYS,
 } from './types';
 
@@ -51,4 +55,22 @@ export async function loadSettings(): Promise<AppSettings> {
 
 export async function saveSettings(settings: AppSettings): Promise<void> {
   return saveJSON(STORAGE_KEYS.SETTINGS, settings);
+}
+
+// ── Coaching Nudges ──────────────────────────────────────
+export async function loadCoachingNudges(): Promise<CoachingNudge[]> {
+  return loadJSON<CoachingNudge[]>(STORAGE_KEYS.COACHING, []);
+}
+
+export async function saveCoachingNudges(nudges: CoachingNudge[]): Promise<void> {
+  return saveJSON(STORAGE_KEYS.COACHING, nudges);
+}
+
+// ── Reflections ──────────────────────────────────────────
+export async function loadReflections(): Promise<ReflectionReport[]> {
+  return loadJSON<ReflectionReport[]>(STORAGE_KEYS.REFLECTIONS, []);
+}
+
+export async function saveReflections(reflections: ReflectionReport[]): Promise<void> {
+  return saveJSON(STORAGE_KEYS.REFLECTIONS, reflections);
 }

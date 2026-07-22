@@ -35,11 +35,18 @@ export async function initNotifications(): Promise<boolean> {
       return false;
     }
 
-    // Android requires a notification channel
+    // Android requires notification channels
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('habit-reminders', {
         name: 'Habit Reminders',
         description: 'Daily reminders to complete your habits',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 100, 100, 100],
+        enableVibrate: true,
+      });
+      await Notifications.setNotificationChannelAsync('coaching-nudges', {
+        name: 'Coach Nudges',
+        description: 'Personalized coaching messages from your habit coach',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 100, 100, 100],
         enableVibrate: true,
@@ -181,5 +188,64 @@ export async function cancelAllNotifications(): Promise<void> {
     await Notifications.cancelAllScheduledNotificationsAsync();
   } catch (e) {
     console.warn('Failed to cancel notifications', e);
+  }
+}
+
+// ── Coaching nudge push notification ────────────────────────
+// Tracks the last-scheduled coaching notification ID so we can
+// cancel-and-replace when a fresh nudge is generated.
+let coachingNotifId: string | null = null;
+
+export async function scheduleCoachingNudgeNotification(
+  body: string,
+  time: string // "HH:mm"
+): Promise<void> {
+  try {
+    const [hours, minutes] = time.split(':').map(Number);
+
+    // Cancel the previous coaching notification so we don't stack duplicates
+    if (coachingNotifId) {
+      await Notifications.cancelScheduledNotificationAsync(coachingNotifId);
+    }
+
+    // Ensure the Android channel exists
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('coaching-nudges', {
+        name: 'Coach Nudges',
+        description: 'Personalized coaching messages from your habit coach',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 100, 100, 100],
+        enableVibrate: true,
+      }).catch(() => {}); // Ignore if it already exists
+    }
+
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '🧠 Habit Coach',
+        body,
+        sound: true,
+        data: { type: 'coaching' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: hours,
+        minute: minutes,
+      },
+    });
+
+    coachingNotifId = id;
+  } catch (e) {
+    console.warn('Failed to schedule coaching notification', e);
+  }
+}
+
+export async function cancelCoachingNotification(): Promise<void> {
+  if (coachingNotifId) {
+    try {
+      await Notifications.cancelScheduledNotificationAsync(coachingNotifId);
+      coachingNotifId = null;
+    } catch (e) {
+      console.warn('Failed to cancel coaching notification', e);
+    }
   }
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,15 +6,16 @@ import {
   TouchableOpacity,
   StyleSheet,
   StatusBar,
-  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
+import { useCoaching } from '../context/CoachingContext';
 import { triggerHaptic } from '../utils/haptics';
 import { playChime, playRewardFanfare } from '../utils/sounds';
 import HabitCard from '../components/HabitCard';
 import ChallengeCard from '../components/ChallengeCard';
 import RewardOverlay from '../components/RewardOverlay';
+import CoachingNudgeCard from '../components/CoachingNudgeCard';
 
 interface HomeScreenProps {
   navigation: any;
@@ -28,6 +29,13 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
     getTodayProgress,
     getActiveChallenges,
   } = useApp();
+  const {
+    activeNudge,
+    generateNudge,
+    dismissNudge,
+    state: coachingState,
+    isAIConfigured,
+  } = useCoaching();
 
   const todayCompletions = getTodayCompletions();
   const progress = getTodayProgress();
@@ -35,6 +43,18 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
 
   const [rewardVisible, setRewardVisible] = useState(false);
   const [rewardData, setRewardData] = useState({ title: '', subtitle: '', emoji: '' });
+
+  // Auto-generation is handled by CoachingContext (app foreground detection).
+  // This effect is kept as a safety net for the case where the context's
+  // AppState listener fires before the component has mounted.
+  useEffect(() => {
+    if (!isAIConfigured || !coachingState.settings.coachingEnabled) return;
+    if (!coachingState.loaded || coachingState.generating) return;
+    if (activeNudge) return; // Already have one to show
+    generateNudge();
+    // Only fire once on mount — the context handles re-generation on foreground
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coachingState.loaded, isAIConfigured]);
 
   const showReward = useCallback(
     (title: string, subtitle: string, emoji: string) => {
@@ -194,6 +214,22 @@ export default function HomeScreen({ navigation }: HomeScreenProps) {
             </View>
             <Text style={styles.progressLabel}>{pct}% today</Text>
           </View>
+        )}
+
+        {/* AI Coaching Nudge */}
+        {coachingState.settings.coachingEnabled && activeNudge && (
+          <CoachingNudgeCard
+            nudge={activeNudge}
+            onDismiss={dismissNudge}
+            onGenerateNew={() => generateNudge()}
+            loading={coachingState.generating}
+          />
+        )}
+        {coachingState.settings.coachingEnabled && coachingState.generating && !activeNudge && (
+          <CoachingNudgeCard
+            onDismiss={() => {}}
+            loading={true}
+          />
         )}
 
         {/* Challenges header */}
@@ -437,10 +473,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#6c63ff',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#6c63ff',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
+    boxShadow: '0 4px 8px rgba(108, 99, 255, 0.35)',
     elevation: 6,
   },
   fabText: {
@@ -460,10 +493,7 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     borderTopWidth: 1,
     borderTopColor: '#f0f0f0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    boxShadow: '0 -2px 4px rgba(0,0,0,0.05)',
     elevation: 4,
   },
   navItem: {

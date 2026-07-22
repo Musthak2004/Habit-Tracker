@@ -70,6 +70,80 @@ export interface AppSettings {
   hapticsEnabled: boolean;
 }
 
+// ── AI Coaching / Nudge Types ──────────────────────────────
+export type NudgeType = 'motivational' | 'suggestion' | 'insight';
+
+export interface CoachingNudge {
+  id: string;
+  habitId: string | null;       // null = general habit tip / non-habit-specific
+  message: string;
+  type: NudgeType;
+  contextData: {
+    habitName?: string;
+    currentStreak?: number;
+    longestStreak?: number;
+    consistency?: number;        // 0-100
+    weeklyCount?: number;
+    suggestion?: string;
+  };
+  createdAt: string;             // ISO date
+  seen: boolean;
+  dismissed: boolean;
+}
+
+// ── AI Reflection Types ────────────────────────────────────
+export type PeriodType = 'weekly' | 'monthly';
+
+export interface ReflectionReport {
+  id: string;
+  periodStart: string;           // ISO date
+  periodEnd: string;             // ISO date
+  periodType: PeriodType;
+  summaryText: string;           // AI-generated human-readable summary
+  reportData: {
+    bestHabit: string | null;
+    bestConsistency: number;
+    worstHabit: string | null;
+    worstConsistency: number;
+    overallConsistency: number;
+    topStreak: number;
+    totalCompletions: number;
+    habitSummaries: {
+      name: string;
+      consistency: number;
+      streak: number;
+      trend: 'up' | 'down' | 'stable';
+      insight: string;
+    }[];
+    insights: string[];
+    recommendations: string[];
+  };
+  createdAt: string;             // ISO date
+}
+
+// ── Coaching Settings (extends AppSettings) ──────────────
+export interface CoachingSettings {
+  coachingEnabled: boolean;
+  reflectionWeekly: boolean;
+  reflectionMonthly: boolean;
+  lastNudgeDate: string | null;  // ISO date — to avoid nudging every session
+  lastWeeklyReflection: string | null; // ISO date
+  lastMonthlyReflection: string | null; // ISO date
+  coachingNotificationEnabled: boolean;  // push to phone at coachingNotificationTime
+  coachingNotificationTime: string;       // "HH:mm" — default "15:00"
+}
+
+export const DEFAULT_COACHING_SETTINGS: CoachingSettings = {
+  coachingEnabled: true,
+  reflectionWeekly: true,
+  reflectionMonthly: true,
+  lastNudgeDate: null,
+  lastWeeklyReflection: null,
+  lastMonthlyReflection: null,
+  coachingNotificationEnabled: true,
+  coachingNotificationTime: '15:00',
+};
+
 export const DEFAULT_SETTINGS: AppSettings = {
   onboardingComplete: false,
   notificationsEnabled: true,
@@ -84,4 +158,6 @@ export const STORAGE_KEYS = {
   CHALLENGES: 'habit-tracker-challenges',
   LOGS: 'habit-tracker-logs',
   SETTINGS: 'habit-tracker-settings',
+  COACHING: 'habit-tracker-coaching-v2',
+  REFLECTIONS: 'habit-tracker-reflections',
 } as const;

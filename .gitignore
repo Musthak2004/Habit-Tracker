@@ -31,12 +31,10 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
 
 # stray files
-,
-habit.targetCount
-sundayThisWeek
 run-expo.bat
 
 # typescript
@@ -45,3 +43,4 @@ run-expo.bat
 # generated native folders
 /ios
 /android
+.gstack/

@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
+import { useCoaching } from '../context/CoachingContext';
 import StatsCard from '../components/StatsCard';
 import CompletionChart from '../components/CompletionChart';
+import ReflectionCard from '../components/ReflectionCard';
 
 interface HistoryScreenProps {
   navigation: any;
@@ -17,8 +20,27 @@ interface HistoryScreenProps {
 
 export default function HistoryScreen({ navigation }: HistoryScreenProps) {
   const { state, getHabitStats, getStreak } = useApp();
+  const {
+    state: coachingState,
+    generateReflection,
+    isAIConfigured,
+  } = useCoaching();
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
   const activeHabits = state.habits.filter((h) => !h.archived);
+
+  const handleGenerateReflection = useCallback(
+    (type: 'weekly' | 'monthly') => {
+      if (!isAIConfigured) {
+        Alert.alert(
+          'AI Not Configured',
+          'Set EXPO_PUBLIC_AI_API_KEY in your .env to enable AI-powered reflections.'
+        );
+        return;
+      }
+      generateReflection(type);
+    },
+    [isAIConfigured, generateReflection]
+  );
 
   // Overall stats
   const allStreaks = activeHabits.map((h) => getStreak(h.id));
@@ -223,6 +245,67 @@ export default function HistoryScreen({ navigation }: HistoryScreenProps) {
               })
           )}
         </View>
+
+        {/* AI Reflection Reports */}
+        <Text style={styles.sectionTitle}>🤖 AI Reflections</Text>
+
+        {/* Weekly reflection */}
+        {coachingState.reflections.filter((r) => r.periodType === 'weekly').length > 0 ? (
+          <ReflectionCard
+            reflection={
+              coachingState.reflections.filter((r) => r.periodType === 'weekly')[0]
+            }
+            onGenerateNew={() => handleGenerateReflection('weekly')}
+            loading={
+              coachingState.generating &&
+              !coachingState.reflections.some((r) => r.periodType === 'weekly')
+            }
+          />
+        ) : (
+          <TouchableOpacity
+            style={styles.generateCard}
+            onPress={() => handleGenerateReflection('weekly')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.generateCardEmoji}>📅</Text>
+            <Text style={styles.generateCardTitle}>Generate Weekly Report</Text>
+            <Text style={styles.generateCardDesc}>
+              AI-powered analysis of your week's habit performance
+            </Text>
+            {coachingState.generating && (
+              <Text style={styles.generatingText}>Generating...</Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {/* Monthly reflection */}
+        {coachingState.reflections.filter((r) => r.periodType === 'monthly').length > 0 ? (
+          <ReflectionCard
+            reflection={
+              coachingState.reflections.filter((r) => r.periodType === 'monthly')[0]
+            }
+            onGenerateNew={() => handleGenerateReflection('monthly')}
+            loading={
+              coachingState.generating &&
+              !coachingState.reflections.some((r) => r.periodType === 'monthly')
+            }
+          />
+        ) : (
+          <TouchableOpacity
+            style={styles.generateCard}
+            onPress={() => handleGenerateReflection('monthly')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.generateCardEmoji}>📆</Text>
+            <Text style={styles.generateCardTitle}>Generate Monthly Report</Text>
+            <Text style={styles.generateCardDesc}>
+              Deep analysis of your monthly habit trends
+            </Text>
+            {coachingState.generating && (
+              <Text style={styles.generatingText}>Generating...</Text>
+            )}
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -293,10 +376,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
     elevation: 2,
   },
   cardTitle: {
@@ -359,5 +439,37 @@ const styles = StyleSheet.create({
   },
   logDotMissed: {
     backgroundColor: '#fee2e2',
+  },
+  generateCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#d4d0ff',
+    borderStyle: 'dashed',
+  },
+  generateCardEmoji: {
+    fontSize: 32,
+    marginBottom: 8,
+  },
+  generateCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#6c63ff',
+    marginBottom: 4,
+  },
+  generateCardDesc: {
+    fontSize: 13,
+    color: '#888',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  generatingText: {
+    fontSize: 12,
+    color: '#f59e0b',
+    fontWeight: '600',
+    marginTop: 8,
   },
 });

@@ -1,0 +1,12 @@
+{
+  "name": "ai-proxy",
+  "version": "1.0.0",
+  "description": "Proxy AI API calls server-side so the API key never reaches the client bundle",
+  "tasks": {
+    "serve": "deno serve --allow-net --allow-env index.ts"
+  },
+  "compilerOptions": {
+    "allowJs": false,
+    "strict": true
+  }
+}
